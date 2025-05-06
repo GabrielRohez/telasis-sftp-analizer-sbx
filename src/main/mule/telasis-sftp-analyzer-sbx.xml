@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<sftp:config name="SFTP_Connection" doc:name="SFTP Config" doc:id="e6e7a786-6ee9-4b2c-8a16-c81b1fadd55a" >
+		<sftp:connection host="localhost" username="gabo" password="@Inercia" />
+	</sftp:config>
+	<db:config name="PostgreSQL_Config" doc:name="Database Config" doc:id="506501e4-827a-4686-b450-54745f14f2ab" >
+		<db:generic-connection url="jdbc:postgresql://localhost:5432/mule_test" driverClassName="org.postgresql.Driver" user="postgres" password="Hola1234" />
+	</db:config>
+	<flow name="telasis-sftp-analyzer-sbxFlow" doc:id="db0b00ed-5f3e-4ab2-a38f-001526fa3762" >
+		<scheduler doc:name="Scheduler" doc:id="b2f7151a-be55-4f2c-ac02-f57b333c8061" >
+			<scheduling-strategy >
+				<fixed-frequency frequency="15" timeUnit="MINUTES"/>
+			</scheduling-strategy>
+		</scheduler>
+		<sftp:list doc:name="List" doc:id="78a9cfa4-af88-4481-b44a-21c6ae10e3f9" config-ref="SFTP_Connection" directoryPath="/Users/gabo/sftp_archivos/entrada" recursive="true"/>
+		<foreach doc:name="For Each" doc:id="7b0416bc-e704-49f1-99db-f88a47a2be32" >
+			<sftp:read doc:name="Read" doc:id="8800b3ae-84f7-46f9-beb3-a61fc76820fe" config-ref="SFTP_Connection" path='#[message.attributes.path]' outputMimeType="text/plain" outputEncoding="UTF-8"/>
+			<ee:transform doc:name="Transform Message" doc:id="4c546faa-efa8-458d-8870-d4af9b3c73f4" >
+				<ee:message >
+					<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+var raw = read(payload, "application/csv")
+
+---
+raw map (item) -> {
+  reserva: if (item.Reserva != null and item.Reserva != "") item.Reserva else null,
+  contract_id: if (item.ContractID != null and item.ContractID != "") item.ContractID else null,
+  first_name: if (item.FirstName != null and item.FirstName != "") item.FirstName else null,
+  last_name: if (item.LastName != null and item.LastName != "") item.LastName else null,
+  home_phone: if (item.HomePhone != null and item.HomePhone != "") item.HomePhone else null,
+  fecha_nacimiento: if (item.Fecha_de_nacimiento != null and item.Fecha_de_nacimiento != "") item.Fecha_de_nacimiento else null,
+  correo_electronico: if (item.Correo_electronico != null and item.Correo_electronico != "") item.Correo_electronico else null,
+  
+  booking_date: if (item.BookingDate != null and item.BookingDate != "") item.BookingDate else null,
+  departure_date: if (item.DepartureDate != null and item.DepartureDate != "") item.DepartureDate else null,
+  return_date: if (item.ReturnDate != null and item.ReturnDate != "") item.ReturnDate else null,
+  
+  amount_pasajero: if (item.AmountPasajero != null and item.AmountPasajero != "") item.AmountPasajero as Number else 0.0,
+  amount_booking: if (item.AmountBooking != null and item.AmountBooking != "") item.AmountBooking as Number else 0.0,
+  currency_code: if (item.CurrencyCode != null and item.CurrencyCode != "") item.CurrencyCode else null,
+  exchange_rate: if (item.ExchangeRate != null and item.ExchangeRate != "") item.ExchangeRate as Number else 0.0,
+  origin: if (item.Origin != null and item.Origin != "") item.Origin else null,
+  destination: if (item.Destination != null and item.Destination != "") item.Destination else null,
+  ssr_code: if (item.SSR_Code != null and item.SSR_Code != "") item.SSR_Code else null,
+  tua: if (item.TUA != null and item.TUA != "") item.TUA as Number else 0.0,
+  valor_seguro: if (item.ValorSeguro != null and item.ValorSeguro != "") item.ValorSeguro as Number else 0.0,
+  created_location_code: if (item.CreatedLocationCode != null and item.CreatedLocationCode != "") item.CreatedLocationCode else null,
+  created_department: if (item.CreatedDepartment != null and item.CreatedDepartment != "") item.CreatedDepartment else null
+}]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+			<logger level="INFO" doc:name="Logger - Datos transformados" doc:id="e24d5fcc-b782-42a5-8bcf-92c4ad6bf0c3" message='#[write(payload, "application/json")]'/>
+			<db:bulk-insert doc:name="Bulk insert" doc:id="f8810b34-0e9f-4b23-b34d-0d9f2559d454" config-ref="PostgreSQL_Config">
+				<db:sql ><![CDATA[INSERT INTO clientes_csv (
+  reserva, contract_id, first_name, last_name, home_phone,
+  fecha_nacimiento, correo_electronico, booking_date, departure_date, return_date,
+  amount_pasajero, amount_booking, currency_code, exchange_rate,
+  origin, destination, ssr_code, tua, valor_seguro,
+  created_location_code, created_department
+) VALUES (
+  :reserva, :contract_id, :first_name, :last_name, :home_phone,
+  :fecha_nacimiento, :correo_electronico, :booking_date, :departure_date, :return_date,
+  :amount_pasajero, :amount_booking, :currency_code, :exchange_rate,
+  :origin, :destination, :ssr_code, :tua, :valor_seguro,
+  :created_location_code, :created_department
+)]]></db:sql>
+			</db:bulk-insert>
+		</foreach>
+	</flow>
+</mule>
