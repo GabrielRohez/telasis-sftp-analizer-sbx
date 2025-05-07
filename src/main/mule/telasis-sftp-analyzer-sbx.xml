@@ -12,65 +12,128 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 	<db:config name="PostgreSQL_Config" doc:name="Database Config" doc:id="506501e4-827a-4686-b450-54745f14f2ab" >
 		<db:generic-connection url="jdbc:postgresql://localhost:5432/mule_test" driverClassName="org.postgresql.Driver" user="postgres" password="Hola1234" />
 	</db:config>
-	<flow name="telasis-sftp-analyzer-sbxFlow" doc:id="db0b00ed-5f3e-4ab2-a38f-001526fa3762" >
-		<scheduler doc:name="Scheduler" doc:id="b2f7151a-be55-4f2c-ac02-f57b333c8061" >
+	<flow name="telasis-sftp-analyzer-sbxFlow" doc:id="ee3cb193-3613-48db-823f-1851f59ba939" >
+		<scheduler doc:name="Scheduler" doc:id="2500b995-b155-467b-9bfc-8021be9db237" >
 			<scheduling-strategy >
 				<fixed-frequency frequency="15" timeUnit="MINUTES"/>
 			</scheduling-strategy>
 		</scheduler>
-		<sftp:list doc:name="List" doc:id="78a9cfa4-af88-4481-b44a-21c6ae10e3f9" config-ref="SFTP_Connection" directoryPath="/Users/gabo/sftp_archivos/entrada" recursive="true"/>
-		<foreach doc:name="For Each" doc:id="7b0416bc-e704-49f1-99db-f88a47a2be32" >
-			<sftp:read doc:name="Read" doc:id="8800b3ae-84f7-46f9-beb3-a61fc76820fe" config-ref="SFTP_Connection" path='#[message.attributes.path]' outputMimeType="text/plain" outputEncoding="UTF-8"/>
-			<ee:transform doc:name="Transform Message" doc:id="4c546faa-efa8-458d-8870-d4af9b3c73f4" >
-				<ee:message >
-					<ee:set-payload ><![CDATA[%dw 2.0
-output application/json
-var raw = read(payload, "application/csv")
+		<sftp:list doc:name="List" doc:id="4c78706f-534f-4160-8246-b55381d2b281" config-ref="SFTP_Connection" directoryPath="/Users/gabo/sftp_archivos/entrada"/>
+		<logger level="INFO" doc:name="Logger" doc:id="16ccfadb-c433-4873-bcb3-c9b5cda3813d" message='#[payload]' />
+		<foreach doc:name="For Each" doc:id="74e69e4e-b221-4c02-9e45-2f4ab31a644b" >
+			<set-variable value='#[(payload splitBy "/")[-1]]' doc:name="Set Variable" doc:id="9c046c9a-caf5-4fbe-a44a-ccf7eb19b3c8" variableName="fileName"/>
+			<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if (vars.fileName endsWith ".csv") "csv"&#10;else if (vars.fileName endsWith ".txt") "txt"&#10;else "unknown"]' doc:name="Set Variable" doc:id="3233038d-5eaa-4a28-8789-357dae1c9f36" variableName="fileType"/>
+			<sftp:read doc:name="Read" doc:id="2da39e35-e569-4d66-82e3-e55e4ba6f127" config-ref="SFTP_Connection" path="#[payload]"/>
+			<logger level="INFO" doc:name="Logger" doc:id="f3a8ad2a-3566-4cd3-b728-cc3ce1d87572" message="#[vars.fileType]"/>
+			<choice doc:name="Choice" doc:id="7e10ccef-0b36-4128-b692-aefd15881168" >
+				<when expression='vars.fileType == "csv"'>
+					<flow-ref doc:name="Flow Reference" doc:id="435ae2ca-c563-4449-ba3e-9b26f871e4d8" name="insertarCSV"/>
+				</when>
+				<when expression='vars.fileType == "txt"'>
+					<flow-ref doc:name="Flow Reference" doc:id="ebec26e9-bee6-478b-94ac-9b290690c8b4" name="insertarTXT"/>
+				</when>
+				<otherwise >
+					<logger level="INFO" doc:name="Logger" doc:id="f2b0f2ce-558b-4e5f-b689-89f6ef6d7273" message="No se pudo leer"/>
+				</otherwise>
+			</choice>
+		</foreach>
+	</flow>
+	<flow name="insertarCSV" doc:id="decf0ed0-298f-414a-b498-1795d5597514" >
+		<ee:transform doc:name="Transform Message" doc:id="6947f504-d0c4-4ddb-a7e9-c76b316a8e6d" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+
+fun clean(v) = if (v == null or trim(v) == "") null else v
+fun isNumeric(val) = !isEmpty(val)
 
 ---
-raw map (item) -> {
-  reserva: if (item.Reserva != null and item.Reserva != "") item.Reserva else null,
-  contract_id: if (item.ContractID != null and item.ContractID != "") item.ContractID else null,
-  first_name: if (item.FirstName != null and item.FirstName != "") item.FirstName else null,
-  last_name: if (item.LastName != null and item.LastName != "") item.LastName else null,
-  home_phone: if (item.HomePhone != null and item.HomePhone != "") item.HomePhone else null,
-  fecha_nacimiento: if (item.Fecha_de_nacimiento != null and item.Fecha_de_nacimiento != "") item.Fecha_de_nacimiento else null,
-  correo_electronico: if (item.Correo_electronico != null and item.Correo_electronico != "") item.Correo_electronico else null,
-  
-  booking_date: if (item.BookingDate != null and item.BookingDate != "") item.BookingDate else null,
-  departure_date: if (item.DepartureDate != null and item.DepartureDate != "") item.DepartureDate else null,
-  return_date: if (item.ReturnDate != null and item.ReturnDate != "") item.ReturnDate else null,
-  
-  amount_pasajero: if (item.AmountPasajero != null and item.AmountPasajero != "") item.AmountPasajero as Number else 0.0,
-  amount_booking: if (item.AmountBooking != null and item.AmountBooking != "") item.AmountBooking as Number else 0.0,
-  currency_code: if (item.CurrencyCode != null and item.CurrencyCode != "") item.CurrencyCode else null,
-  exchange_rate: if (item.ExchangeRate != null and item.ExchangeRate != "") item.ExchangeRate as Number else 0.0,
-  origin: if (item.Origin != null and item.Origin != "") item.Origin else null,
-  destination: if (item.Destination != null and item.Destination != "") item.Destination else null,
-  ssr_code: if (item.SSR_Code != null and item.SSR_Code != "") item.SSR_Code else null,
-  tua: if (item.TUA != null and item.TUA != "") item.TUA as Number else 0.0,
-  valor_seguro: if (item.ValorSeguro != null and item.ValorSeguro != "") item.ValorSeguro as Number else 0.0,
-  created_location_code: if (item.CreatedLocationCode != null and item.CreatedLocationCode != "") item.CreatedLocationCode else null,
-  created_department: if (item.CreatedDepartment != null and item.CreatedDepartment != "") item.CreatedDepartment else null
+payload map (row) -> {
+  reserva: clean(row.Reserva),
+  contract_id: clean(row.ContractID),
+  first_name: clean(row.FirstName),
+  last_name: clean(row.LastName),
+  home_phone: clean(row.HomePhone),
+  fecha_nacimiento: clean(row.FechaNacimiento),
+  correo_electronico: clean(row.CorreoElectronico),
+  booking_date: clean(row.BookingDate),
+  departure_date: clean(row.DepartureDate),
+  return_date: clean(row.ReturnDate),
+  amount_pasajero: if (isNumeric(row.AmountPasajero)) row.AmountPasajero as Number else null,
+  amount_booking: if (isNumeric(row.AmountBooking)) row.AmountBooking as Number else null,
+  currency_code: clean(row.CurrencyCode),
+  exchange_rate: if (isNumeric(row.ExchangeRate)) row.ExchangeRate as Number else null,
+  origin: clean(row.Origin),
+  destination: clean(row.Destination),
+  ssr_code: clean(row.SsrCode),
+  tua: if (isNumeric(row.Tua)) row.Tua as Number else null,
+  valor_seguro: if (isNumeric(row.ValorSeguro)) row.ValorSeguro as Number else null,
+  created_location_code: clean(row.CreatedLocationCode),
+  created_department: clean(row.CreatedDepartment)
+}
+]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<db:bulk-insert doc:name="Bulk Insert CSV&#10;" doc:id="a93699e9-b569-498a-a782-b4cc9ddc88af" config-ref="PostgreSQL_Config">
+			<db:sql ><![CDATA[INSERT INTO clientes_csv (
+  reserva, contract_id, first_name, last_name, home_phone, fecha_nacimiento, correo_electronico,
+  booking_date, departure_date, return_date, amount_pasajero, amount_booking, currency_code,
+  exchange_rate, origin, destination, ssr_code, tua, valor_seguro, created_location_code, created_department
+)
+VALUES (
+  :reserva, :contract_id, :first_name, :last_name, :home_phone, :fecha_nacimiento, :correo_electronico,
+  :booking_date, :departure_date, :return_date, :amount_pasajero, :amount_booking, :currency_code,
+  :exchange_rate, :origin, :destination, :ssr_code, :tua, :valor_seguro, :created_location_code, :created_department
+)
+]]></db:sql>
+		</db:bulk-insert>
+		<logger level="INFO" doc:name="Logger" doc:id="8580375c-23ce-4414-8f68-0837fc00e26d" message="CSV insertado correctamente: #[payload]"/>
+	</flow>
+	<flow name="insertarTXT" doc:id="62a4c617-9bd5-4705-9c28-7c101757f214" >
+		<ee:transform doc:name="Transform Message" doc:id="9eb10f92-1153-4496-b981-d987cefe06d3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+var cleanedLines = (payload as String) splitBy "\n"
+    filter (line) -> line != null and line != "" and (line contains "|")
+---
+cleanedLines map (line) -> do {
+    var fields = line splitBy "|"
+    ---
+    {
+        idUnico: fields[0] default null,
+        folio: fields[1] default null,
+        nombreCliente: fields[2] default null,
+        casa: fields[3] default null,
+        oficina: fields[4] default null,
+        movil: fields[5] default null,
+        entidad: fields[6] default null,
+        ciudad: fields[7] default null,
+        municipio: fields[8] default null,
+        cp: fields[9] default null,
+        domicilio: fields[10] default null,
+        ultDig: fields[11] default null,
+        email: fields[12] default null,
+        fechaCorte: fields[13] default null,
+        product: fields[14] default null,
+        flag: fields[15] default null,
+        cuentaNueva: fields[16] default null,
+        antiguedad: fields[17] default null,
+        accountId: fields[18] default null
+    }
 }]]></ee:set-payload>
-				</ee:message>
-			</ee:transform>
-			<logger level="INFO" doc:name="Logger - Datos transformados" doc:id="e24d5fcc-b782-42a5-8bcf-92c4ad6bf0c3" message='#[write(payload, "application/json")]'/>
-			<db:bulk-insert doc:name="Bulk insert" doc:id="f8810b34-0e9f-4b23-b34d-0d9f2559d454" config-ref="PostgreSQL_Config">
-				<db:sql ><![CDATA[INSERT INTO clientes_csv (
-  reserva, contract_id, first_name, last_name, home_phone,
-  fecha_nacimiento, correo_electronico, booking_date, departure_date, return_date,
-  amount_pasajero, amount_booking, currency_code, exchange_rate,
-  origin, destination, ssr_code, tua, valor_seguro,
-  created_location_code, created_department
+			</ee:message>
+		</ee:transform>
+		<db:bulk-insert doc:name="Bulk insert TXT" doc:id="3307e063-0ed7-4a48-ac30-497c1cf30707" config-ref="PostgreSQL_Config">
+			<db:sql ><![CDATA[INSERT INTO clientes_txt (
+  id_unico, folio, nombre_cliente, casa, oficina, movil, entidad, ciudad, municipio, cp,
+  domicilio, ult_dig, email, f_corte, product, flag, cuenta_nueva, antiguedad, account_id
 ) VALUES (
-  :reserva, :contract_id, :first_name, :last_name, :home_phone,
-  :fecha_nacimiento, :correo_electronico, :booking_date, :departure_date, :return_date,
-  :amount_pasajero, :amount_booking, :currency_code, :exchange_rate,
-  :origin, :destination, :ssr_code, :tua, :valor_seguro,
-  :created_location_code, :created_department
-)]]></db:sql>
-			</db:bulk-insert>
-		</foreach>
+  :idUnico, :folio, :nombreCliente, :casa, :oficina, :movil, :entidad, :ciudad, :municipio, :cp,
+  :domicilio, :ultDig, :email, :fechaCorte, :product, :flag, :cuentaNueva, :antiguedad, :accountId
+)
+]]></db:sql>
+		</db:bulk-insert>
+		<logger level="INFO" doc:name="Logger" doc:id="7a9f5c5a-675b-44c6-97e1-65dcf2d3afd3" message="CSV insertado correctamente: #[payload]" />
 	</flow>
 </mule>
