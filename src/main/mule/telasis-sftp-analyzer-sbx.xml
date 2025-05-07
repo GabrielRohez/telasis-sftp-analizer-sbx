@@ -22,6 +22,7 @@ http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/cu
 		<logger level="INFO" doc:name="Logger" doc:id="16ccfadb-c433-4873-bcb3-c9b5cda3813d" message='#[payload]' />
 		<foreach doc:name="For Each" doc:id="74e69e4e-b221-4c02-9e45-2f4ab31a644b" >
 			<set-variable value='#[(payload splitBy "/")[-1]]' doc:name="Set Variable" doc:id="9c046c9a-caf5-4fbe-a44a-ccf7eb19b3c8" variableName="fileName"/>
+			<set-variable value="#[payload]" doc:name="Set Variable" doc:id="7ca19d14-5175-4208-b8db-a8e65d156487" variableName="filePath" />
 			<set-variable value='#[%dw 2.0&#10;output application/java&#10;---&#10;if (vars.fileName endsWith ".csv") "csv"&#10;else if (vars.fileName endsWith ".txt") "txt"&#10;else "unknown"]' doc:name="Set Variable" doc:id="3233038d-5eaa-4a28-8789-357dae1c9f36" variableName="fileType"/>
 			<sftp:read doc:name="Read" doc:id="2da39e35-e569-4d66-82e3-e55e4ba6f127" config-ref="SFTP_Connection" path="#[payload]"/>
 			<logger level="INFO" doc:name="Logger" doc:id="f3a8ad2a-3566-4cd3-b728-cc3ce1d87572" message="#[vars.fileType]"/>
@@ -88,6 +89,7 @@ VALUES (
 ]]></db:sql>
 		</db:bulk-insert>
 		<logger level="INFO" doc:name="Logger" doc:id="8580375c-23ce-4414-8f68-0837fc00e26d" message="CSV insertado correctamente: #[payload]"/>
+		<sftp:move doc:name="Move" doc:id="7b8823f0-e1de-42c5-8057-8f15a82e11f0" config-ref="SFTP_Connection" sourcePath="#[vars.filePath]" targetPath="/Users/gabo/sftp_archivos/procesados"/>
 	</flow>
 	<flow name="insertarTXT" doc:id="62a4c617-9bd5-4705-9c28-7c101757f214" >
 		<ee:transform doc:name="Transform Message" doc:id="9eb10f92-1153-4496-b981-d987cefe06d3" >
@@ -135,5 +137,6 @@ cleanedLines map (line) -> do {
 ]]></db:sql>
 		</db:bulk-insert>
 		<logger level="INFO" doc:name="Logger" doc:id="7a9f5c5a-675b-44c6-97e1-65dcf2d3afd3" message="CSV insertado correctamente: #[payload]" />
+		<sftp:move doc:name="Move" doc:id="2fa91cbf-19dc-464b-ad59-92cc9321aca6" config-ref="SFTP_Connection" sourcePath="#[vars.filePath]" targetPath="/Users/gabo/sftp_archivos/procesados"/>
 	</flow>
 </mule>
